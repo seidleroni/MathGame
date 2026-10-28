@@ -22,6 +22,7 @@
 </head>
 <body>
   <canvas id="scene"></canvas>
+  <canvas id="dungeon" class="hidden"></canvas>
 
   <div id="ui">
     <section id="screen-title" class="screen menu">
@@ -41,8 +42,9 @@
         <input id="pilot-name" class="name-input" maxlength="12" placeholder="Pilot name" autocomplete="off" spellcheck="false">
         <button id="btn-play" class="btn big">▶ Play</button>
         <div class="row">
-          <button id="btn-shop" class="btn blue">🚀 Hangar</button>
-          <button id="btn-pals" class="btn purple">👽 Pals <span class="pill-count" id="pal-total">0</span></button>
+          <button id="btn-shop" class="btn blue medium">🚀 Hangar</button>
+          <button id="btn-armory" class="btn red medium">⚔️ Armory</button>
+          <button id="btn-pals" class="btn purple medium">👽 Pals <span class="pill-count" id="pal-total">0</span></button>
         </div>
         <div class="row">
           <button id="btn-sound" class="icon-btn" aria-label="Sound effects">🔊</button>
@@ -56,9 +58,13 @@
     <section id="screen-map" class="screen menu hidden">
       <header class="bar">
         <button class="icon-btn" data-go="title" aria-label="Back">⬅</button>
-        <h2>Pick a planet</h2>
+        <h2 id="map-title">Pick a planet</h2>
         <span class="gem-pill">💎 <span class="gems">0</span></span>
       </header>
+      <div id="mode-toggle" class="mode-toggle">
+        <button data-mode="space">🚀 Space</button>
+        <button data-mode="dungeon">⚔️ Dungeons</button>
+      </div>
       <div id="world-list" class="world-list"></div>
     </section>
 
@@ -98,7 +104,7 @@
         <div id="res-learned" class="res-learned"></div>
         <div id="res-world" class="res-world"></div>
         <div id="res-unlock" class="unlock hidden"></div>
-        <div id="res-pal" class="pal-reveal hidden"></div>
+        <div id="res-drops" class="res-drops"></div>
         <div id="res-xp" class="res-xp"></div>
         <div id="res-rank" class="unlock hidden"></div>
         <div class="row">
@@ -127,6 +133,22 @@
       </header>
       <p class="shop-tip">Beat a boss to find a pal. Tap one to make it your co-pilot!</p>
       <div id="pal-grid" class="pal-grid"></div>
+    </section>
+
+    <section id="screen-armory" class="screen menu hidden">
+      <header class="bar">
+        <button class="icon-btn" data-go="title" aria-label="Back">⬅</button>
+        <h2>Armory</h2>
+        <span class="gem-pill" id="gear-count">0</span>
+      </header>
+      <div class="spacer"></div>
+      <div class="armory-panel">
+        <p class="shop-tip">Beat dungeon bosses for treasure. Learn every fact in a world for ✨ enchanted gear!</p>
+        <h3>Weapons</h3>
+        <div id="armory-weapon" class="gear-row"></div>
+        <h3>Armor</h3>
+        <div id="armory-armor" class="gear-row"></div>
+      </div>
     </section>
 
     <section id="screen-progress" class="screen menu hidden">

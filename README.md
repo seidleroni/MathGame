@@ -1,6 +1,9 @@
 # Number Rocket 🚀
 
-A 3D space game (Three.js) that helps a 2nd grader memorize addition and subtraction facts within 20. Fly a rocket and blast the asteroid with the right answer. Fight a boss UFO at the end of every mission, earn gems, and paint your rocket in the Hangar.
+A 3D game (Three.js) that helps a 2nd grader memorize addition and subtraction facts within 20. It has two modes that share the same learning progress:
+
+- **🚀 Space:** fly a rocket, blast the asteroid with the right answer, and fight a boss UFO at the end of every mission.
+- **⚔️ Block Dungeons:** a blocky hero explores torch-lit dungeons. Monsters carry the answers, and the right one gets a sword slash. Beat the block golem at the end for treasure.
 
 Works on phones and tablets (portrait or landscape) and on desktop. Nothing to install: it is a static web page.
 
@@ -30,6 +33,8 @@ Progress is saved in the browser's local storage on that device.
 
 ## Fun stuff
 
+- **Block Dungeons:** 12 themed dungeons (Mossy Caves, Lava Forge, Frost Fortress…) with slimes, mushrooms, bats and skeletons. Monsters burst into cubes and drop gems. Each dungeon ends with a block golem boss and a treasure chest.
+- **Armory:** gear from treasure chests (swords, axes, hammers, armor) shows on the hero. Learning every fact in a world earns its ✨ enchanted gear (the *Twin Blade* for doubles, the *Ten-Strike Sword* for make-10…), so the hero's gear shows what the child knows.
 - **Space Pals:** 24 collectible critters (common, rare, legendary). Every defeated boss drops one. Pick a favorite as co-pilot and it cheers from the corner of the screen.
 - **⚡ Lightning Round:** 60 seconds to blast as many learned facts as possible and beat your record. It unlocks after 8 learned facts, and a new record earns a pal. It doubles as speed practice.
 - **Ranks:** points earn XP, from Space Cadet up to Space Legend, with a rank-up celebration.
@@ -56,7 +61,9 @@ js/learner.js       spaced-repetition model and per-mission question picker
 js/facts.js         the 242 facts, planets, answer choices and strategy hints
 js/audio.js         Web Audio sound effects and music
 js/skins.js         rocket paint jobs
-js/rewards.js       ranks, Space Pals and bosses
+js/dungeon.js       Three.js dungeon: corridor, hero, monsters, golem boss, chest
+js/gfx.js           texture and label helpers shared by both scenes
+js/rewards.js       ranks, Space Pals, bosses, dungeons and gear
 sw.js               offline support (network first, cache fallback)
 tests/              node:test tests for the learning engine
 ```

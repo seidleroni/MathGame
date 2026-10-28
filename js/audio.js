@@ -9,6 +9,13 @@ const CHORDS = [
   [53, 57, 60],
 ];
 const ARP = [0, 1, 2, 1, 0, 2, 1, 2];
+// i–VI–III–VII in A minor: adventurous, for the dungeons.
+const DUNGEON_CHORDS = [
+  [57, 60, 64],
+  [53, 57, 60],
+  [60, 64, 67],
+  [55, 59, 62],
+];
 
 export class Sfx {
   constructor(settings) {
@@ -16,6 +23,12 @@ export class Sfx {
     this.ctx = null;
     this.musicTimer = null;
     this.tempo = 112;
+    this.theme = 'space';
+  }
+
+  // 'space' or 'dungeon': changes the music and the attack sounds.
+  setTheme(theme) {
+    this.theme = theme;
   }
 
   // Browsers only allow audio after a user gesture, so call this from taps.
@@ -90,12 +103,24 @@ export class Sfx {
 
   laser() {
     if (!this.on) return;
+    if (this.theme === 'dungeon') {
+      // Sword whoosh with a little metal ring.
+      this.noise({ dur: 0.18, vol: 0.35, freq: 3000, to: 600 });
+      this.tone(1800, { to: 1400, dur: 0.25, type: 'triangle', vol: 0.05, at: 0.05 });
+      return;
+    }
     this.tone(1500, { to: 220, dur: 0.18, type: 'sawtooth', vol: 0.08 });
     this.tone(1000, { to: 160, dur: 0.16, type: 'square', vol: 0.04 });
   }
 
   boom(big = false) {
     if (!this.on) return;
+    if (this.theme === 'dungeon') {
+      // Blocks breaking apart: a thump and a rattle of little clicks.
+      this.tone(big ? 90 : 160, { to: 50, dur: big ? 0.5 : 0.2, vol: 0.35 });
+      for (let i = 0; i < (big ? 8 : 4); i++) this.noise({ dur: 0.04, vol: 0.2, freq: 2500, at: 0.04 + i * 0.045 });
+      return;
+    }
     this.noise({ dur: big ? 0.9 : 0.45, vol: big ? 0.6 : 0.4, freq: 1400, to: 60 });
     this.tone(130, { to: 40, dur: big ? 0.6 : 0.3, vol: 0.35 });
   }
@@ -174,7 +199,8 @@ export class Sfx {
     if (this.nextTime < this.ctx.currentTime) this.nextTime = this.ctx.currentTime + 0.05;
     while (this.nextTime < this.ctx.currentTime + 0.2) {
       const at = this.nextTime - this.ctx.currentTime;
-      const chord = CHORDS[Math.floor(this.step / 8) % CHORDS.length];
+      const chords = this.theme === 'dungeon' ? DUNGEON_CHORDS : CHORDS;
+      const chord = chords[Math.floor(this.step / 8) % chords.length];
       const bus = this.musicBus;
       this.tone(midi(chord[ARP[this.step % 8]] + 12), { dur: stepLen * 0.9, type: 'triangle', vol: 0.06, at, bus });
       if (this.step % 4 === 0) this.tone(midi(chord[0] - 24), { dur: stepLen * 3, type: 'sine', vol: 0.12, at, bus });

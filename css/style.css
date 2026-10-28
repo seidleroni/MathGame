@@ -36,7 +36,8 @@ body {
   overscroll-behavior: none;
 }
 
-#scene {
+#scene,
+#dungeon {
   position: fixed;
   inset: 0;
   display: block;
@@ -1289,4 +1290,129 @@ button {
 .pal.selected {
   outline: 3px solid var(--yellow);
   outline-offset: 2px;
+}
+
+/* ---------- dungeons ---------- */
+
+.btn.medium {
+  font-size: clamp(16px, 4.2vw, 22px);
+  padding: 11px 16px;
+}
+
+.btn.red {
+  color: #fff;
+  background: linear-gradient(#ff8a65, #e53935);
+  box-shadow: 0 6px 0 #9c2525, 0 10px 22px rgba(0, 0, 0, 0.35);
+}
+
+.mode-toggle {
+  pointer-events: auto;
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  margin-bottom: 14px;
+  border-radius: 999px;
+  background: rgba(30, 34, 90, 0.85);
+  border: 2px solid var(--edge);
+}
+
+.mode-toggle button {
+  font-family: inherit;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--muted);
+  background: transparent;
+  border: none;
+  border-radius: 999px;
+  padding: 8px 18px;
+}
+
+.mode-toggle button.on {
+  color: #2a1650;
+  background: linear-gradient(#ffe57a, #ffb627);
+}
+
+.planet-icon.block {
+  border-radius: 14px;
+  font-size: 30px;
+}
+
+.res-drops {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  align-items: center;
+}
+
+.res-drops:empty {
+  display: none;
+}
+
+.pal-reveal .pal-emoji,
+.gear .pal-emoji {
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+}
+
+.pal-reveal .pal-emoji {
+  width: 68px;
+  height: 68px;
+  font-size: 42px;
+}
+
+.enchanted {
+  --rarity: #e040fb;
+}
+
+.pal-reveal.enchanted,
+.pal.enchanted {
+  border-color: var(--rarity);
+  box-shadow: 0 0 22px color-mix(in srgb, var(--rarity) 50%, transparent);
+}
+
+.armory-panel {
+  pointer-events: auto;
+  width: 100%;
+  max-width: 900px;
+  padding: 12px;
+  border-radius: 22px;
+  background: rgba(10, 10, 30, 0.82);
+}
+
+.armory-panel h3 {
+  margin: 6px 4px;
+  font-size: 18px;
+}
+
+.gear-row {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding: 4px 4px 10px;
+  scroll-snap-type: x mandatory;
+  align-items: flex-start;
+}
+
+.gear {
+  flex: none;
+  width: 118px;
+  scroll-snap-align: start;
+}
+
+.gear .pal-emoji {
+  width: 56px;
+  height: 56px;
+  font-size: 32px;
+}
+
+.gear .pal-name {
+  font-size: 15px;
+  text-align: center;
+}
+
+.gear .pal-tag {
+  font-size: 12px;
+  text-align: center;
 }

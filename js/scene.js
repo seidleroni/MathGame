@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { WORLDS } from './facts.js';
 import { skinById } from './skins.js';
+import { canvasTexture, clamp01, easeOutBack, glowTexture, labelTexture, lerp, rand } from './gfx.js';
 
 const CAMERA_Z = 12;
 const MIN_VIEW_WIDTH = 7.2;
@@ -8,30 +9,6 @@ const ROCK_COLORS = [0xff6b6b, 0xffd93d, 0x6bcb77, 0x4d96ff, 0xc77dff, 0xff9f1c,
 const ENTER_TIME = 0.45;
 const GOLD = 0xffc93c;
 const tmpColor = new THREE.Color();
-
-const clamp01 = (x) => Math.min(1, Math.max(0, x));
-const lerp = (a, b, t) => a + (b - a) * t;
-const easeOutBack = (t) => 1 + 2.7 * Math.pow(t - 1, 3) + 1.7 * Math.pow(t - 1, 2);
-const rand = (a, b) => a + Math.random() * (b - a);
-
-function canvasTexture(size, draw) {
-  const canvas = document.createElement('canvas');
-  canvas.width = canvas.height = size;
-  draw(canvas.getContext('2d'), size);
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
-}
-
-const glowTexture = () =>
-  canvasTexture(128, (g, s) => {
-    const grad = g.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2);
-    grad.addColorStop(0, 'rgba(255,255,255,1)');
-    grad.addColorStop(0.25, 'rgba(255,255,255,0.7)');
-    grad.addColorStop(1, 'rgba(255,255,255,0)');
-    g.fillStyle = grad;
-    g.fillRect(0, 0, s, s);
-  });
 
 function planetTexture(world) {
   return canvasTexture(256, (g, s) => {
@@ -71,7 +48,6 @@ export class Space {
     this.scene.add(sun);
 
     this.glow = glowTexture();
-    this.labels = new Map();
     this.fx = [];
     this.timers = [];
     this.time = 0;
@@ -99,6 +75,12 @@ export class Space {
     this.resize();
     window.addEventListener('resize', () => this.resize());
     this.renderer.setAnimationLoop(() => this.tick());
+  }
+
+  // Only one 3D scene runs at a time; the other stops drawing.
+  setActive(on) {
+    this.renderer.setAnimationLoop(on ? () => this.tick() : null);
+    this.clock.getDelta();
   }
 
   // ---------- layout ----------
@@ -343,26 +325,6 @@ export class Space {
 
   // ---------- asteroids ----------
 
-  labelTexture(text) {
-    if (!this.labels.has(text)) {
-      this.labels.set(
-        text,
-        canvasTexture(256, (g, s) => {
-          g.font = `700 ${text.length > 1 ? 150 : 180}px Fredoka, "Arial Rounded MT Bold", Arial, sans-serif`;
-          g.textAlign = 'center';
-          g.textBaseline = 'middle';
-          g.lineJoin = 'round';
-          g.lineWidth = 26;
-          g.strokeStyle = '#1b1240';
-          g.strokeText(text, s / 2, s / 2 + 8);
-          g.fillStyle = '#ffffff';
-          g.fillText(text, s / 2, s / 2 + 8);
-        }),
-      );
-    }
-    return this.labels.get(text);
-  }
-
   makeAsteroid(value, radius, color, golden = false) {
     const geo = new THREE.IcosahedronGeometry(1, 1);
     const p = geo.attributes.position;
@@ -386,7 +348,7 @@ export class Space {
       new THREE.SpriteMaterial({ map: this.glow, color, transparent: true, opacity: 0.45, depthWrite: false, blending: THREE.AdditiveBlending }),
     );
     halo.scale.setScalar(radius * 3.4);
-    const label = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.labelTexture(String(value)), depthTest: false, transparent: true }));
+    const label = new THREE.Sprite(new THREE.SpriteMaterial({ map: labelTexture(String(value)), depthTest: false, transparent: true }));
     label.scale.setScalar(radius * 1.75);
     label.position.z = radius * 1.1;
     label.renderOrder = 10;
@@ -439,7 +401,7 @@ export class Space {
   }
 
   setLabel(a, text) {
-    a.label.material.map = this.labelTexture(text);
+    a.label.material.map = labelTexture(text);
     a.label.material.needsUpdate = true;
   }
 
