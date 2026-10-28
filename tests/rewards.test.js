@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { RANKS, PALS, BOSSES, rankFor, rollPal } from '../js/rewards.js';
+import { RANKS, PALS, BOSSES, DUNGEONS, GEAR, rankFor, rollPal } from '../js/rewards.js';
 import { WORLDS, FACT_BY_ID } from '../js/facts.js';
 import { Learner, pickLightning, LEARNED_BOX } from '../js/learner.js';
 
@@ -23,6 +23,10 @@ test('ranks climb with XP and progress stays between 0 and 1', () => {
 test('pals are unique and there is a boss for every planet', () => {
   assert.equal(new Set(PALS.map((p) => p.id)).size, PALS.length);
   assert.equal(BOSSES.length, WORLDS.length);
+  assert.equal(DUNGEONS.length, WORLDS.length);
+  assert.equal(new Set(GEAR.map((g) => g.id)).size, GEAR.length);
+  // One enchanted reward per world.
+  assert.deepEqual(GEAR.filter((g) => g.rarity === 'enchanted').map((g) => g.world), WORLDS.map((_, i) => i));
 });
 
 test('pal drops favor ones the child does not have yet', () => {
@@ -43,4 +47,21 @@ test('the Lightning Round only asks learned facts from reached planets', () => {
     assert.ok(L.stat(f.id).box >= LEARNED_BOX);
   }
   assert.notEqual(pickLightning(L, ['2+1', '1+5']).id, '2+1');
+});
+
+test('chest loot never drops enchanted gear and avoids duplicates', async () => {
+  const { GEAR, rollGear } = await import('../js/rewards.js');
+  for (let i = 0; i < 200; i++) assert.notEqual(rollGear([]).rarity, 'enchanted');
+  let n = 0;
+  const seq = [0, 0.99];
+  const first = GEAR.find((g) => g.rarity !== 'enchanted');
+  assert.notEqual(rollGear([first.id], () => seq[n++ % 2]).id, first.id);
+});
+
+test('enchanted gear is earned only when every fact in its world is learned', async () => {
+  const { enchantedEarned } = await import('../js/rewards.js');
+  const progress = (full) => (i) => ({ share: full.includes(i) ? 1 : 0.9 });
+  assert.deepEqual(enchantedEarned(progress([]), []), []);
+  assert.deepEqual(enchantedEarned(progress([1]), []).map((g) => g.id), ['twin-blade']);
+  assert.deepEqual(enchantedEarned(progress([1]), ['twin-blade']), []);
 });
