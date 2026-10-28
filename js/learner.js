@@ -36,6 +36,10 @@ function freshState() {
     best: {},
     missions: 0,
     bestCombo: 0,
+    xp: 0,
+    pals: {},
+    copilot: null,
+    lightningBest: 0,
     sound: true,
     music: true,
     name: '',
@@ -116,6 +120,12 @@ export class Learner {
       this.state.unlocked++;
     }
     return this.state.unlocked > before ? this.state.unlocked : null;
+  }
+
+  // Learned facts from planets the child has reached: the Lightning Round pool.
+  learnedFacts(minBox = LEARNED_BOX) {
+    const reached = new Set(WORLD_FACTS.slice(0, this.state.unlocked + 1).flat().map((f) => f.id));
+    return FACTS.filter((f) => reached.has(f.id) && this.stat(f.id).seen && this.stat(f.id).box >= minBox);
   }
 
   totals() {
@@ -269,4 +279,21 @@ function unique(entries) {
   const seen = new Map();
   for (const e of entries) seen.set(e.fact.id, e.fact);
   return [...seen.values()];
+}
+
+export const LIGHTNING_SECONDS = 60;
+export const LIGHTNING_MIN_FACTS = 8;
+
+// Lightning Round: rapid recall of already-learned facts, leaning on the slow ones.
+export function pickLightning(learner, recent, rng = Math.random) {
+  // Misses can shrink the learned pool mid-round; fall back to anything practiced.
+  let pool = learner.learnedFacts();
+  if (pool.length < 4) pool = learner.learnedFacts(0);
+  if (pool.length > recent.length) pool = pool.filter((f) => !recent.includes(f.id));
+  const now = Date.now();
+  const weighted = pool.map((f) => {
+    const s = learner.stat(f.id);
+    return [f, 1 + (s.avgMs > fastLimit('keypad') ? 2 : 0) + (now >= s.due ? 1 : 0)];
+  });
+  return weighted.length ? weightedPick(weighted, rng) : FACTS[0];
 }

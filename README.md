@@ -30,7 +30,13 @@ Progress is saved in the browser's local storage on that device.
 
 ## Fun stuff
 
-Combo streaks speed up the starfield and multiply points. The game also has laser blasts, explosions, screen shake, a boss UFO with a googly-eyed alien, fireworks for a 3-star mission, 7 rocket paint jobs to buy with gems, and synthesized sound effects and music (each can be switched off on the title screen).
+- **Space Pals:** 24 collectible critters (common, rare, legendary). Every defeated boss drops one. Pick a favorite as co-pilot and it cheers from the corner of the screen.
+- **⚡ Lightning Round:** 60 seconds to blast as many learned facts as possible and beat your record. It unlocks after 8 learned facts, and a new record earns a pal. It doubles as speed practice.
+- **Ranks:** points earn XP, from Space Cadet up to Space Legend, with a rank-up celebration.
+- **Bosses:** each planet has its own named, colored UFO boss that taunts you when you miss and yelps when hit.
+- **Golden bonus rocks:** now and then a whole wave turns gold and pays triple gems.
+- **Streak flair:** streaks speed up the starfield and multiply points. The rocket trail catches fire at 5 in a row and turns rainbow at 10.
+- Laser blasts, explosions, screen shake, fireworks for 3-star missions, 7 rocket paint jobs to buy with gems, and synthesized sound effects and music (each can be switched off on the title screen).
 
 ## Development
 
@@ -50,6 +56,7 @@ js/learner.js       spaced-repetition model and per-mission question picker
 js/facts.js         the 242 facts, planets, answer choices and strategy hints
 js/audio.js         Web Audio sound effects and music
 js/skins.js         rocket paint jobs
+js/rewards.js       ranks, Space Pals and bosses
 sw.js               offline support (network first, cache fallback)
 tests/              node:test tests for the learning engine
 ```

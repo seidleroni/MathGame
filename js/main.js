@@ -1,8 +1,12 @@
 import { Space } from './scene.js';
 import { Sfx } from './audio.js';
 import { WORLDS, FACT_BY_ID, factText, hintFor, makeChoices } from './facts.js';
-import { Learner, Mission, inputMode, timeLimit, BOSS_HEALTH, REGULAR_QUESTIONS, UNLOCK_SHARE } from './learner.js';
+import {
+  Learner, Mission, inputMode, timeLimit, fastLimit, pickLightning,
+  BOSS_HEALTH, REGULAR_QUESTIONS, UNLOCK_SHARE, LIGHTNING_SECONDS, LIGHTNING_MIN_FACTS,
+} from './learner.js';
 import { SKINS } from './skins.js';
+import { PALS, BOSSES, palById, rankFor, rollPal } from './rewards.js';
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => [...document.querySelectorAll(sel)];
@@ -22,9 +26,12 @@ document.fonts?.load('700 100px Fredoka').catch(() => {});
 
 // ---------- screens ----------
 
-const SCREENS = ['title', 'map', 'hud', 'results', 'shop', 'progress'];
+const SCREENS = ['title', 'map', 'hud', 'results', 'shop', 'pals', 'progress'];
 // Where the rocket sits on each screen: [fraction down the screen, scale].
-const ROCKET_SPOTS = { title: [0.56, 1.5], map: [1.3, 0.8], hud: [0.86, 0.9], results: [0.86, 0.9], shop: [0.42, 1.9], progress: [1.3, 0.7] };
+const ROCKET_SPOTS = {
+  title: [0.5, 1.3], map: [1.3, 0.8], hud: [0.86, 0.9], results: [0.86, 0.9],
+  shop: [0.42, 1.9], pals: [1.3, 0.8], progress: [1.3, 0.7],
+};
 let current = 'title';
 
 function show(name) {
@@ -32,8 +39,10 @@ function show(name) {
   for (const s of SCREENS) $(`#screen-${s}`).classList.toggle('hidden', s !== name);
   space.setRocketAnchor(...ROCKET_SPOTS[name]);
   if (name !== 'shop') space.setSkin(learner.state.skin);
+  if (name === 'title') renderTitle();
   if (name === 'map') renderMap();
   if (name === 'shop') renderShop();
+  if (name === 'pals') renderPals();
   if (name === 'progress') renderProgress();
   refreshGems();
 }
@@ -49,12 +58,19 @@ function bumpGems() {
   pill.classList.add('bump');
 }
 
+// Restart a CSS animation by toggling its class.
+function replay(el, cls) {
+  el.classList.remove(cls);
+  void el.offsetWidth;
+  el.classList.add(cls);
+}
+
 // Audio can only start from a user gesture; iOS is picky about which one.
 for (const type of ['pointerdown', 'touchend', 'click']) {
   document.addEventListener(type, () => sfx.unlock(), { capture: true });
 }
 document.addEventListener('click', (e) => {
-  if (e.target.closest('.btn, .icon-btn, .world, .skin')) sfx.click();
+  if (e.target.closest('.btn, .icon-btn, .world, .skin, .pal')) sfx.click();
 });
 
 $$('[data-go]').forEach((b) => (b.onclick = () => show(b.dataset.go)));
@@ -71,7 +87,17 @@ nameInput.addEventListener('keydown', (e) => e.key === 'Enter' && nameInput.blur
 
 $('#btn-play').onclick = () => show('map');
 $('#btn-shop').onclick = () => show('shop');
+$('#btn-pals').onclick = () => show('pals');
 $('#btn-progress').onclick = () => show('progress');
+
+function renderTitle() {
+  const rank = rankFor(learner.state.xp);
+  $('#rank-badge').textContent = rank.badge;
+  $('#rank-name').textContent = rank.name;
+  $('#rank-next').textContent = rank.next ? `${rank.next.xp - learner.state.xp} XP to ${rank.next.name}` : 'Top rank!';
+  $('#rank-fill').style.width = `${rank.progress * 100}%`;
+  $('#pal-total').textContent = Object.keys(learner.state.pals).length;
+}
 
 function renderToggles() {
   $('#btn-sound').classList.toggle('off', !learner.state.sound);
@@ -93,9 +119,26 @@ renderToggles();
 
 const starsText = (n) => [0, 1, 2].map((i) => (i < n ? '★' : '<span class="dim">★</span>')).join('');
 
+function lightningCard() {
+  const learned = learner.learnedFacts().length;
+  const locked = learned < LIGHTNING_MIN_FACTS;
+  const btn = document.createElement('button');
+  btn.className = `world lightning${locked ? ' locked' : ''}`;
+  btn.innerHTML = `
+    <div class="planet-icon bolt">${locked ? '🔒' : '⚡'}</div>
+    <div>
+      <div class="world-name">Lightning Round</div>
+      <div class="world-skill">${locked ? `Learn ${LIGHTNING_MIN_FACTS - learned} more facts to unlock` : `${LIGHTNING_SECONDS} seconds. How many can you blast?`}</div>
+      ${locked ? '' : `<div class="world-meta"><span>🏆 Best: ${learner.state.lightningBest}</span></div>`}
+    </div>`;
+  btn.onclick = () => (locked ? sfx.wrong() : startLightning());
+  return btn;
+}
+
 function renderMap() {
   const list = $('#world-list');
   list.innerHTML = '';
+  list.appendChild(lightningCard());
   const { unlocked, worldStars } = learner.state;
   WORLDS.forEach((w, i) => {
     const locked = i > unlocked;
@@ -126,12 +169,12 @@ function renderMap() {
   list.querySelector('.current')?.scrollIntoView({ block: 'center' });
 }
 
-// ---------- mission ----------
+// ---------- shared game state ----------
 
 let game = null;
 let lastWorld = 0;
 
-// setTimeout that is dropped if the player has left this mission.
+// setTimeout that is dropped if the player has left this game.
 function later(ms, fn) {
   const g = game;
   setTimeout(() => {
@@ -139,31 +182,105 @@ function later(ms, fn) {
   }, ms);
 }
 
-function startMission(world) {
-  lastWorld = world;
+function newGame(kind, extra) {
   space.reset();
-  space.setWorld(world);
   game = {
-    world,
-    mission: new Mission(learner, world),
-    score: 0,
-    combo: 0,
-    bestCombo: 0,
-    gems: 0,
-    fact: null,
-    mode: null,
-    entry: '',
-    target: null,
-    locked: true,
-    paused: false,
-    bossShown: false,
+    kind, score: 0, combo: 0, bestCombo: 0, gems: 0,
+    fact: null, mode: null, entry: '', target: null,
+    locked: true, paused: false, ...extra,
   };
   show('hud');
   $('#keypad').classList.add('hidden');
   $('#boss-bar').classList.add('hidden');
   $('#question').classList.add('hidden');
-  sfx.setIntense(false);
+  $('#progress-fill').classList.toggle('timer', kind === 'lightning');
+  sfx.setIntense(kind === 'lightning');
+  setupCopilot();
   updateHud();
+}
+
+function showQuestion(fact) {
+  const q = $('#question');
+  q.classList.remove('hidden');
+  replay(q, 'enter');
+  $('#q-text').textContent = factText(fact);
+  setAnswer('?');
+}
+
+function showKeypad() {
+  $('#keypad').classList.remove('hidden');
+  anchorAboveKeypad();
+  setAnswer('?', 'typing');
+}
+
+function anchorAboveKeypad() {
+  const r = $('#keypad').getBoundingClientRect();
+  const blocksMiddle = r.left < window.innerWidth / 2 && r.right > window.innerWidth / 2;
+  if (blocksMiddle) space.setRocketAnchor(Math.max(0.45, (r.top - 60) / window.innerHeight), 0.75);
+  else space.setRocketAnchor(...ROCKET_SPOTS.hud);
+  placeCopilot();
+}
+
+window.addEventListener('resize', () => {
+  if (current === 'hud' && game?.mode === 'keypad') anchorAboveKeypad();
+});
+
+function setAnswer(text, cls = '') {
+  const el = $('#q-answer');
+  el.textContent = text;
+  el.className = `q-answer ${cls}`;
+}
+
+function updateHeat() {
+  space.setHeat(game.combo >= 10 ? 2 : game.combo >= 5 ? 1 : 0);
+  space.setWarp(1 + Math.min(game.combo, 10) * 0.3);
+}
+
+// ---------- co-pilot ----------
+
+const PRAISE = ['Nice!', 'Great!', 'Yes!', 'Awesome!', 'Super!', 'Boom!', 'You got it!', 'Woo-hoo!'];
+const FAST_PRAISE = ['⚡ Lightning!', '⚡ Super fast!', '⚡ Zoom!', '⚡ Speedy!'];
+const ENCOURAGE = ['Almost! Try this trick.', 'You can do it!', "Let's learn it!", 'Oops! No worries.'];
+const BOSS_OUCH = ['Ouch!', 'Oof!', 'Hey!', 'Yikes!', 'No fair!'];
+const BOSS_TAUNT = ['Hee hee!', 'Missed me!', 'Nyah nyah!', 'Ha ha!'];
+const pickOne = (list) => list[Math.floor(Math.random() * list.length)];
+
+function setupCopilot() {
+  const pal = palById(learner.state.copilot);
+  $('#copilot').classList.toggle('hidden', !pal);
+  $('#copilot-bubble').classList.add('hidden');
+  if (pal) $('#copilot-face').textContent = pal.emoji;
+  placeCopilot();
+}
+
+function placeCopilot() {
+  const pad = $('#keypad');
+  const bottom = pad.classList.contains('hidden') ? 16 : window.innerHeight - pad.getBoundingClientRect().top + 10;
+  $('#copilot').style.bottom = `${bottom}px`;
+}
+
+let sayTimer;
+// The co-pilot cheers in a speech bubble; without one, praise floats up instead.
+function say(text, at, mood = 'happy') {
+  if (!palById(learner.state.copilot)) {
+    if (at) pop(at.x, at.y - 46, text, 'gold');
+    return;
+  }
+  const bubble = $('#copilot-bubble');
+  bubble.textContent = text;
+  bubble.classList.remove('hidden');
+  replay(bubble, 'show');
+  replay($('#copilot-face'), mood);
+  clearTimeout(sayTimer);
+  sayTimer = setTimeout(() => bubble.classList.add('hidden'), 1800);
+}
+
+// ---------- planet missions ----------
+
+function startMission(world) {
+  lastWorld = world;
+  space.setWorld(world);
+  newGame('mission', { world, mission: new Mission(learner, world), bossShown: false, goldens: 0, golden: false });
   banner(`${WORLDS[world].name}<small>${WORLDS[world].skill}</small>`);
   later(1500, nextQuestion);
 }
@@ -175,50 +292,44 @@ function nextQuestion() {
 
   const fact = m.next();
   const box = learner.stat(fact.id).box;
-  Object.assign(game, { fact, mode: inputMode(box), entry: '', locked: false });
-  const q = $('#question');
-  q.classList.remove('hidden', 'enter');
-  void q.offsetWidth;
-  q.classList.add('enter');
-  $('#q-text').textContent = factText(fact);
-  setAnswer('?');
+  // Now and then a whole wave turns golden and pays triple gems.
+  const golden = m.phase === 'regular' && m.index >= 2 && game.goldens < 2 && Math.random() < 0.15;
+  if (golden) game.goldens++;
+  Object.assign(game, { fact, mode: inputMode(box), entry: '', locked: false, golden });
+  showQuestion(fact);
+  $('#question').classList.toggle('golden', golden);
   const duration = timeLimit(box);
   if (game.mode === 'choice') {
     $('#keypad').classList.add('hidden');
     space.setRocketAnchor(...ROCKET_SPOTS.hud);
+    placeCopilot();
     // Brand-new facts get 3 choices; facts being learned get 4.
-    space.spawnChoices(makeChoices(fact, box === 0 ? 3 : 4), duration);
+    space.spawnChoices(makeChoices(fact, box === 0 ? 3 : 4), duration, golden);
     game.target = null;
   } else {
-    $('#keypad').classList.remove('hidden');
-    anchorAboveKeypad();
-    game.target = space.spawnTarget(duration);
-    setAnswer('?', 'typing');
+    showKeypad();
+    game.target = space.spawnTarget(duration, golden);
+  }
+  if (golden) {
+    sfx.gem();
+    const q = $('#question').getBoundingClientRect();
+    pop(q.left + q.width / 2, q.bottom + 20, '⭐ BONUS ROCK! ×3 💎', 'gold');
   }
   updateHud();
 }
-
-function anchorAboveKeypad() {
-  const r = $('#keypad').getBoundingClientRect();
-  const blocksMiddle = r.left < window.innerWidth / 2 && r.right > window.innerWidth / 2;
-  if (blocksMiddle) space.setRocketAnchor(Math.max(0.45, (r.top - 60) / window.innerHeight), 0.75);
-  else space.setRocketAnchor(...ROCKET_SPOTS.hud);
-}
-
-window.addEventListener('resize', () => {
-  if (current === 'hud' && game?.mode === 'keypad') anchorAboveKeypad();
-});
 
 function startBossFight() {
   game.bossShown = true;
   space.clearWave();
   $('#question').classList.add('hidden');
   $('#keypad').classList.add('hidden');
+  placeCopilot();
   space.setRocketAnchor(...ROCKET_SPOTS.hud);
-  space.showBoss();
+  space.showBoss(BOSSES[game.world].color);
   sfx.bossAppear();
   sfx.setIntense(true);
-  banner('BOSS BATTLE!<small>Right answers zap the alien!</small>');
+  banner(`${BOSSES[game.world].name} attacks!<small>Right answers zap the alien!</small>`);
+  say('Zap that alien!', null);
   $('#boss-bar').classList.remove('hidden');
   updateBossBar();
   later(2200, nextQuestion);
@@ -229,23 +340,19 @@ function endBossFight() {
   space.clearWave();
   $('#question').classList.add('hidden');
   $('#keypad').classList.add('hidden');
+  placeCopilot();
   space.setRocketAnchor(...ROCKET_SPOTS.hud);
   if (game.mission.bossHealth <= 0) {
-    banner('BOSS DEFEATED!');
+    banner(`${BOSSES[game.world].name} is beaten!`);
+    say('We did it!!', null);
     for (let i = 0; i < 5; i++) later(i * 200, () => sfx.boom(i === 4));
     space.defeatBoss();
     later(2600, finishMission);
   } else {
-    banner('The alien flew away!<small>Get it next time!</small>');
+    banner(`${BOSSES[game.world].name} flew away!<small>Get it next time!</small>`);
     space.bossEscape();
     later(2000, finishMission);
   }
-}
-
-function setAnswer(text, cls = '') {
-  const el = $('#q-answer');
-  el.textContent = text;
-  el.className = `q-answer ${cls}`;
 }
 
 // ---------- input ----------
@@ -294,6 +401,7 @@ space.onTimeout = () => {
 function answer(value, rock) {
   game.locked = true;
   const correct = value === game.fact.answer;
+  if (game.kind === 'lightning') return lightningAnswer(value, correct, rock);
   const boss = game.mission.phase === 'boss';
   const { fast } = game.mission.answer(game.fact, correct, space.waveMs(), game.mode);
   learner.save();
@@ -301,40 +409,42 @@ function answer(value, rock) {
   else onMiss(value, rock, boss);
 }
 
-const PRAISE = ['Nice!', 'Great!', 'Yes!', 'Awesome!', 'Super!', 'Boom!', 'You got it!'];
-const FAST_PRAISE = ['⚡ Lightning!', '⚡ Super fast!', '⚡ Zoom!', '⚡ Speedy!'];
-const pickOne = (list) => list[Math.floor(Math.random() * list.length)];
-
 function onCorrect(rock, fast, boss) {
   const g = game;
   g.combo++;
   g.bestCombo = Math.max(g.bestCombo, g.combo);
   const mult = Math.min(4, 1 + Math.floor(g.combo / 5));
   const points = (fast ? 20 : 10) * mult;
-  const gems = fast ? 2 : 1;
+  const gems = (fast ? 2 : 1) * (g.golden ? 3 : 1);
   g.score += points;
   g.gems += gems;
   setAnswer(String(g.fact.answer), 'right');
-  space.setWarp(1 + Math.min(g.combo, 10) * 0.3);
+  updateHeat();
   sfx.laser();
   space.shoot(rock, (at) => {
     sfx.boom();
     sfx.correct(g.combo);
     if (fast) sfx.fast();
-    pop(at.x, at.y, `+${points}`, fast ? 'fast' : '');
-    pop(at.x, at.y - 46, fast ? pickOne(FAST_PRAISE) : pickOne(PRAISE), 'gold');
-    later(150, () => {
-      sfx.gem();
-      bumpGems();
-    });
+    pop(at.x, at.y, g.golden ? `+${gems} 💎` : `+${points}`, fast || g.golden ? 'fast' : '');
+    if (g.golden) {
+      space.celebrate(3);
+      say('Bonus gems!', at);
+    } else if (g.combo % 5 === 0) {
+      say(`🔥 ${g.combo} in a row!${mult > 1 ? ` Points ×${mult}!` : ''}`, at);
+    } else {
+      say(fast ? pickOne(FAST_PRAISE) : pickOne(PRAISE), at);
+    }
+    for (let i = 0; i < Math.min(gems, 4); i++) later(150 + i * 110, () => sfx.gem());
+    later(150, bumpGems);
   });
   if (boss) {
     space.hitBoss(() => {
       sfx.boom();
       updateBossBar();
+      const b = space.bossScreen();
+      pop(b.x, b.y - 30, pickOne(BOSS_OUCH), 'boss');
     });
   }
-  if (g.combo % 5 === 0) banner(`🔥 ${g.combo} in a row!${mult > 1 ? `<small>Points x${Math.min(4, 1 + Math.floor(g.combo / 5))}</small>` : ''}`);
   updateHud();
   later(boss ? 1200 : 850, nextQuestion);
 }
@@ -343,16 +453,114 @@ function onMiss(value, rock, boss) {
   const g = game;
   const timedOut = value === null;
   g.combo = 0;
-  space.setWarp(1);
+  updateHeat();
   sfx.wrong();
   setAnswer(timedOut ? '?' : String(value), 'wrong');
   space.wrong(rock);
-  if (boss) space.bossAttack(() => sfx.splat());
+  say(pickOne(ENCOURAGE), null, 'sad');
+  if (boss) {
+    space.bossAttack(() => sfx.splat());
+    const b = space.bossScreen();
+    pop(b.x, b.y - 30, pickOne(BOSS_TAUNT), 'boss');
+  }
   space.paused = true;
   const correctRock = g.mode === 'choice' ? space.find(g.fact.answer) : g.target;
   space.highlight(correctRock);
   updateHud();
   later(timedOut ? 300 : 700, () => showHint(g.fact, timedOut, correctRock));
+}
+
+// ---------- lightning round ----------
+
+const LIGHTNING_ROCK_MS = 9000;
+let clockTimer;
+
+function startLightning() {
+  space.setWorld(learner.state.unlocked);
+  newGame('lightning', { count: 0, recent: [], timeLeft: LIGHTNING_SECONDS * 1000, over: false });
+  banner('⚡ LIGHTNING ROUND<small>Blast as many as you can!</small>');
+  later(1800, () => {
+    banner('GO!');
+    startClock();
+    nextLightning();
+  });
+}
+
+function startClock() {
+  const g = game;
+  let last = performance.now();
+  clearInterval(clockTimer);
+  clockTimer = setInterval(() => {
+    if (game !== g) return clearInterval(clockTimer);
+    const now = performance.now();
+    if (!g.paused) g.timeLeft -= now - last;
+    last = now;
+    $('#progress-fill').style.width = `${Math.max(0, g.timeLeft / (LIGHTNING_SECONDS * 1000)) * 100}%`;
+    if (g.timeLeft <= 0) {
+      clearInterval(clockTimer);
+      endLightning();
+    }
+  }, 100);
+}
+
+function nextLightning() {
+  if (game.over) return;
+  const fact = pickLightning(learner, game.recent);
+  game.recent.push(fact.id);
+  if (game.recent.length > 3) game.recent.shift();
+  Object.assign(game, { fact, mode: 'keypad', entry: '', locked: false });
+  showQuestion(fact);
+  showKeypad();
+  game.target = space.spawnTarget(LIGHTNING_ROCK_MS);
+}
+
+function lightningAnswer(value, correct, rock) {
+  const g = game;
+  const ms = space.waveMs();
+  learner.record(g.fact, correct, ms, 'keypad');
+  learner.save();
+  if (correct) {
+    g.count++;
+    g.combo++;
+    g.bestCombo = Math.max(g.bestCombo, g.combo);
+    g.score += (ms <= fastLimit('keypad') ? 20 : 10) * Math.min(4, 1 + Math.floor(g.combo / 5));
+    setAnswer(String(g.fact.answer), 'right');
+    updateHeat();
+    sfx.laser();
+    space.shoot(rock, (at) => {
+      sfx.boom();
+      sfx.correct(g.combo);
+      pop(at.x, at.y, `${g.count}!`, 'fast');
+      if (g.combo % 5 === 0) say(`${g.combo} in a row!`, at);
+    });
+    later(380, nextLightning);
+  } else {
+    g.combo = 0;
+    updateHeat();
+    sfx.wrong();
+    setAnswer(value === null ? '?' : String(value), 'wrong');
+    space.wrong(rock);
+    later(650, () => {
+      setAnswer(String(g.fact.answer), 'right');
+      space.setLabel(rock, String(g.fact.answer));
+      space.shoot(rock);
+    });
+    later(1300, nextLightning);
+  }
+  updateHud();
+}
+
+function endLightning() {
+  game.over = true;
+  game.locked = true;
+  space.clearWave();
+  $('#question').classList.add('hidden');
+  $('#keypad').classList.add('hidden');
+  placeCopilot();
+  space.setRocketAnchor(...ROCKET_SPOTS.hud);
+  sfx.boom(true);
+  banner(`TIME!<small>${game.count} blasted</small>`);
+  later(1800, finishLightning);
 }
 
 // ---------- hint card ----------
@@ -400,14 +608,15 @@ function showHint(fact, timedOut, rock) {
 // ---------- HUD bits ----------
 
 function updateHud() {
-  const m = game.mission;
-  $('#progress-fill').style.width = `${Math.min(1, m.index / REGULAR_QUESTIONS) * 100}%`;
-  $('#score').textContent = game.score;
+  if (game.kind === 'mission') {
+    $('#progress-fill').style.width = `${Math.min(1, game.mission.index / REGULAR_QUESTIONS) * 100}%`;
+    $('#score').textContent = game.score;
+  } else {
+    $('#score').textContent = `⚡ ${game.count}`;
+  }
   const combo = $('#combo');
   combo.textContent = game.combo >= 2 ? `🔥 x${game.combo}` : '';
-  combo.classList.remove('hot');
-  void combo.offsetWidth;
-  combo.classList.add('hot');
+  replay(combo, 'hot');
   $('#hud-gems').textContent = learner.state.gems + game.gems;
 }
 
@@ -445,6 +654,7 @@ $('#btn-quit').onclick = () => {
   $('#pause').classList.add('hidden');
   $('#hint').classList.add('hidden');
   game = null;
+  clearInterval(clockTimer);
   space.reset();
   sfx.setIntense(false);
   show('map');
@@ -472,38 +682,46 @@ document.addEventListener('visibilitychange', () => {
 
 // ---------- results ----------
 
+function grantPal() {
+  const st = learner.state;
+  const pal = rollPal(st.pals);
+  const dup = !!st.pals[pal.id];
+  st.pals[pal.id] = (st.pals[pal.id] ?? 0) + 1;
+  if (!st.copilot) st.copilot = pal.id;
+  if (dup) st.gems += 10;
+  return { pal, dup };
+}
+
+// XP, rank-ups and pal drops are shared by both game kinds.
+function applyRewards(g, palDrop) {
+  const st = learner.state;
+  const before = rankFor(st.xp);
+  st.xp += g.score;
+  st.gems += g.gems;
+  st.bestCombo = Math.max(st.bestCombo, g.bestCombo);
+  const after = rankFor(st.xp);
+  const drop = palDrop ? grantPal() : null;
+  return { xp: g.score, rank: after, rankUp: after.index > before.index, drop };
+}
+
 function finishMission() {
   const g = game;
   const sum = g.mission.summary();
-  const bonus = (sum.bossDefeated ? 5 : 0) + (sum.stars === 3 ? 5 : 0);
-  g.gems += bonus;
+  g.gems += (sum.bossDefeated ? 5 : 0) + (sum.stars === 3 ? 5 : 0);
   const st = learner.state;
-  st.gems += g.gems;
   st.missions++;
-  st.bestCombo = Math.max(st.bestCombo, g.bestCombo);
   st.worldStars[g.world] = Math.max(st.worldStars[g.world] ?? 0, sum.stars);
   const newBest = g.score > (st.best[g.world] ?? 0);
   if (newBest) st.best[g.world] = g.score;
+  const rewards = applyRewards(g, sum.bossDefeated);
   const unlocked = learner.updateUnlocks();
   learner.save();
+  closeGame();
 
-  game = null;
-  space.reset();
-  sfx.setIntense(false);
-  renderResults(g, sum, bonus, newBest, unlocked);
-  show('results');
-  sfx.fanfare(sum.stars);
-  if (sum.stars === 3) space.celebrate();
-  if (unlocked !== null) setTimeout(() => sfx.unlockWorld(), 1300);
-}
-
-function renderResults(g, sum, bonus, newBest, unlocked) {
-  const name = learner.state.name;
+  const name = st.name;
   $('#res-title').textContent = sum.stars === 3 ? `Superstar${name ? `, ${name}` : ''}!` : name ? `Great flying, ${name}!` : 'Mission complete!';
-  $$('#res-stars span').forEach((s, i) => {
-    s.className = i < sum.stars ? 'on' : '';
-    s.style.animationDelay = `${0.3 + i * 0.3}s`;
-  });
+  showStars(sum.stars);
+  $('#res-big').classList.add('hidden');
   $('#res-stats').innerHTML = `
     <div>✅ Right: <b>${sum.right}/${sum.total}</b></div>
     <div>⚡ Fast: <b>${sum.fast}</b></div>
@@ -519,15 +737,93 @@ function renderResults(g, sum, bonus, newBest, unlocked) {
 
   const prog = learner.worldProgress(g.world);
   const need = Math.ceil(prog.total * UNLOCK_SHARE) - prog.learned;
-  const nextNote = g.world === learner.state.unlocked && g.world < WORLDS.length - 1 && need > 0 ? ` · ${need} more to open the next planet` : '';
+  const nextNote = g.world === st.unlocked && g.world < WORLDS.length - 1 && need > 0 ? ` · ${need} more to open the next planet` : '';
   $('#res-world').innerHTML = `${WORLDS[g.world].name}: ${prog.learned}/${prog.total} learned${nextNote}
     <div class="track"><div class="fill" style="width:${prog.share * 100}%"></div></div>`;
+  $('#res-world').classList.remove('hidden');
 
   const unlock = $('#res-unlock');
   unlock.classList.toggle('hidden', unlocked === null);
   if (unlocked !== null) unlock.textContent = `🎉 New planet: ${WORLDS[unlocked].name}!`;
   $('#btn-again').textContent = unlocked !== null ? '🚀 Next planet' : '↻ Again';
   $('#btn-again').onclick = () => startMission(unlocked ?? lastWorld);
+
+  showRewards(rewards);
+  show('results');
+  sfx.fanfare(sum.stars);
+  if (sum.stars === 3) space.celebrate();
+  if (unlocked !== null) setTimeout(() => sfx.unlockWorld(), 1300);
+}
+
+function finishLightning() {
+  const g = game;
+  const st = learner.state;
+  const record = g.count > st.lightningBest;
+  if (record) st.lightningBest = g.count;
+  g.gems += Math.ceil(g.count / 2) + (record ? 5 : 0);
+  const rewards = applyRewards(g, record && g.count >= 5);
+  learner.save();
+  closeGame();
+
+  $('#res-title').textContent = record ? 'NEW RECORD!' : 'Lightning Round';
+  $('#res-stars').classList.add('hidden');
+  const big = $('#res-big');
+  big.classList.remove('hidden');
+  big.innerHTML = `⚡ ${g.count}<small>facts blasted in ${LIGHTNING_SECONDS} seconds</small>`;
+  $('#res-stats').innerHTML = `
+    <div>🏆 Record: <b>${st.lightningBest}</b></div>
+    <div>🔥 Best streak: <b>${g.bestCombo}</b></div>
+    <div>⭐ Score: <b>${g.score}</b></div>
+    <div>💎 Gems: <b>+${g.gems}</b></div>`;
+  $('#res-learned').innerHTML = record ? '' : `<div class="label">Beat ${st.lightningBest} to set a new record!</div>`;
+  $('#res-world').classList.add('hidden');
+  $('#res-unlock').classList.add('hidden');
+  $('#btn-again').textContent = '⚡ Again';
+  $('#btn-again').onclick = startLightning;
+
+  showRewards(rewards);
+  show('results');
+  sfx.fanfare(record ? 3 : 2);
+  if (record) space.celebrate();
+}
+
+function closeGame() {
+  game = null;
+  clearInterval(clockTimer);
+  space.reset();
+  sfx.setIntense(false);
+}
+
+function showStars(n) {
+  $('#res-stars').classList.remove('hidden');
+  $$('#res-stars span').forEach((s, i) => {
+    s.className = i < n ? 'on' : '';
+    s.style.animationDelay = `${0.3 + i * 0.3}s`;
+  });
+}
+
+function showRewards({ xp, rank, rankUp, drop }) {
+  $('#res-xp').innerHTML = `+${xp} XP · ${rank.badge} ${rank.name}
+    <div class="track"><div class="fill xp" style="width:${rank.progress * 100}%"></div></div>`;
+  const rankEl = $('#res-rank');
+  rankEl.classList.toggle('hidden', !rankUp);
+  if (rankUp) {
+    rankEl.textContent = `${rank.badge} RANK UP! You're a ${rank.name}!`;
+    setTimeout(() => sfx.unlockWorld(), 900);
+    space.celebrate(6);
+  }
+  const palEl = $('#res-pal');
+  palEl.classList.toggle('hidden', !drop);
+  if (drop) {
+    const { pal, dup } = drop;
+    palEl.className = `pal-reveal ${pal.rarity}`;
+    palEl.innerHTML = `
+      <div class="pal-emoji">${pal.emoji}</div>
+      <div><div class="pal-found">${dup ? 'Found again:' : 'New Space Pal!'}</div>
+      <div class="pal-name">${pal.name}</div>
+      <div class="pal-rarity">${pal.rarity}${dup ? ' · +10 💎' : ''}</div></div>`;
+    setTimeout(() => sfx.gem(), 700);
+  }
 }
 
 $('#btn-tomap').onclick = () => show('map');
@@ -568,6 +864,30 @@ function renderShop() {
       refreshGems();
     };
     list.appendChild(btn);
+  }
+}
+
+// ---------- space pals ----------
+
+function renderPals() {
+  const st = learner.state;
+  const grid = $('#pal-grid');
+  grid.innerHTML = '';
+  $('#pal-count').textContent = `${Object.keys(st.pals).length}/${PALS.length}`;
+  for (const pal of PALS) {
+    const owned = !!st.pals[pal.id];
+    const btn = document.createElement('button');
+    btn.className = `pal ${pal.rarity}${owned ? '' : ' missing'}${st.copilot === pal.id ? ' selected' : ''}`;
+    btn.innerHTML = owned
+      ? `<span class="pal-emoji">${pal.emoji}</span><span class="pal-name">${pal.name}</span><span class="pal-tag">${st.copilot === pal.id ? 'Co-pilot ✓' : pal.rarity}</span>`
+      : `<span class="pal-emoji">❔</span><span class="pal-name">???</span><span class="pal-tag">${pal.rarity}</span>`;
+    btn.onclick = () => {
+      if (!owned) return sfx.wrong();
+      st.copilot = pal.id;
+      learner.save();
+      renderPals();
+    };
+    grid.appendChild(btn);
   }
 }
 
@@ -653,7 +973,7 @@ show('title');
 
 // `?debug` exposes internals for automated play-testing.
 if (new URLSearchParams(location.search).has('debug')) {
-  window.rocket = { space, learner, startMission, get game() { return game; } };
+  window.rocket = { space, learner, startMission, startLightning, get game() { return game; } };
 }
 
 if ('serviceWorker' in navigator && location.protocol === 'https:') {

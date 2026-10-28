@@ -6,6 +6,8 @@ const CAMERA_Z = 12;
 const MIN_VIEW_WIDTH = 7.2;
 const ROCK_COLORS = [0xff6b6b, 0xffd93d, 0x6bcb77, 0x4d96ff, 0xc77dff, 0xff9f1c, 0x2ee6d6];
 const ENTER_TIME = 0.45;
+const GOLD = 0xffc93c;
+const tmpColor = new THREE.Color();
 
 const clamp01 = (x) => Math.min(1, Math.max(0, x));
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -74,6 +76,7 @@ export class Space {
     this.timers = [];
     this.time = 0;
     this.speed = 1;
+    this.heat = 0;
     this.warp = 1;
     this.shakeAmount = 0;
     this.paused = false;
@@ -302,11 +305,17 @@ export class Space {
     this.scene.add(this.trailPoints);
   }
 
+  // Streak flair: 0 = normal, 1 = on fire, 2 = rainbow.
+  setHeat(level) {
+    this.heat = level;
+    this.trailPoints.material.size = [0.5, 0.75, 0.85][level];
+  }
+
   updateTrail(dt) {
     const t = this.trail;
     const pos = this.trailPoints.geometry.attributes.position;
     const col = this.trailPoints.geometry.attributes.color;
-    t.emit += dt * 70;
+    t.emit += dt * (this.heat ? 110 : 70);
     const s = this.rocket.scale.x;
     const r = this.rocket.rotation.z;
     while (t.emit >= 1) {
@@ -325,7 +334,8 @@ export class Space {
       t.life[i] -= dt;
       const k = Math.max(0, t.life[i] / 0.6);
       pos.setXY(i, pos.getX(i) + t.vel[i * 2] * dt, pos.getY(i) + t.vel[i * 2 + 1] * dt);
-      col.setXYZ(i, this.trailColor.r * k, this.trailColor.g * k, this.trailColor.b * k);
+      const c = this.heat === 2 ? tmpColor.setHSL((i / 24 + this.time * 0.8) % 1, 1, 0.6) : this.heat === 1 ? tmpColor.setHSL(0.02 + (i % 5) * 0.025, 1, 0.55) : this.trailColor;
+      col.setXYZ(i, c.r * k, c.g * k, c.b * k);
     }
     pos.needsUpdate = true;
     col.needsUpdate = true;
@@ -353,7 +363,7 @@ export class Space {
     return this.labels.get(text);
   }
 
-  makeAsteroid(value, radius, color) {
+  makeAsteroid(value, radius, color, golden = false) {
     const geo = new THREE.IcosahedronGeometry(1, 1);
     const p = geo.attributes.position;
     const v = new THREE.Vector3();
@@ -366,7 +376,10 @@ export class Space {
       p.setXYZ(i, v.x, v.y, v.z);
     }
     geo.computeVertexNormals();
-    const mat = new THREE.MeshStandardMaterial({ color, flatShading: true, roughness: 0.55, emissive: color, emissiveIntensity: 0.18 });
+    const mat = golden
+      ? new THREE.MeshStandardMaterial({ color: GOLD, flatShading: true, roughness: 0.25, metalness: 0.85, emissive: GOLD, emissiveIntensity: 0.35 })
+      : new THREE.MeshStandardMaterial({ color, flatShading: true, roughness: 0.55, emissive: color, emissiveIntensity: 0.18 });
+    if (golden) color = GOLD;
     const rock = new THREE.Mesh(geo, mat);
     rock.scale.setScalar(radius);
     const halo = new THREE.Sprite(
@@ -386,6 +399,7 @@ export class Space {
       spin: new THREE.Vector3(rand(-1, 1), rand(-1, 1), rand(-1, 1)),
       wiggle: 0,
       phase: rand(0, Math.PI * 2),
+      golden,
     };
   }
 
@@ -403,13 +417,13 @@ export class Space {
     this.wave = { asteroids, elapsed: 0, duration: duration / 1000, endY, timedOut: false };
   }
 
-  spawnChoices(values, duration) {
+  spawnChoices(values, duration, golden = false) {
     const n = values.length;
     const span = Math.min(this.viewW * 0.88, n * 2.7);
     const radius = Math.min(0.85, (span / n) * 0.36);
     const colors = [...ROCK_COLORS].sort(() => Math.random() - 0.5);
     const rocks = values.map((value, i) => {
-      const a = this.makeAsteroid(value, radius, colors[i]);
+      const a = this.makeAsteroid(value, radius, colors[i], golden);
       a.x = -span / 2 + (span * (i + 0.5)) / n;
       return a;
     });
@@ -417,8 +431,8 @@ export class Space {
     return rocks;
   }
 
-  spawnTarget(duration) {
-    const a = this.makeAsteroid('?', 0.85, ROCK_COLORS[Math.floor(Math.random() * ROCK_COLORS.length)]);
+  spawnTarget(duration, golden = false) {
+    const a = this.makeAsteroid('?', 0.85, ROCK_COLORS[Math.floor(Math.random() * ROCK_COLORS.length)], golden);
     a.x = 0;
     this.startWave([a], duration);
     return a;
@@ -472,6 +486,7 @@ export class Space {
       a.rock.rotation.x += a.spin.x * dt;
       a.rock.rotation.y += a.spin.y * dt;
       const danger = p > 0.7 ? (p - 0.7) / 0.3 : 0;
+      if (a.golden) a.rock.rotation.y += dt * 2;
       const pulse = a.highlight ? 1.3 + Math.sin(this.time * 8) * 0.3 : 1 + Math.sin(this.time * (4 + danger * 12)) * 0.12 * (0.3 + danger);
       a.halo.scale.setScalar(a.radius * 3.4 * pulse);
       if (a.highlight) a.halo.material.color.set(0xfff27a);
@@ -713,7 +728,8 @@ export class Space {
     this.boss = { group, active: false, knock: 0, flash: 0, fall: 0, y: 0 };
   }
 
-  showBoss() {
+  showBoss(color = 0x8e44ad) {
+    this.bossMat.color.set(color);
     const b = this.boss;
     b.active = true;
     b.fall = 0;
@@ -729,6 +745,10 @@ export class Space {
   bossEscape() {
     this.boss.escape = true;
     this.after(1.5, () => this.hideBoss());
+  }
+
+  bossScreen() {
+    return this.toScreen(this.boss.group.position);
   }
 
   hideBoss() {
@@ -865,5 +885,6 @@ export class Space {
     this.hideBoss();
     this.paused = false;
     this.warp = 1;
+    this.setHeat(0);
   }
 }

@@ -28,6 +28,13 @@
       <div class="title-top">
         <h1 class="logo"><span>Number</span><span>Rocket</span></h1>
         <p class="tagline">Blast the right answer!</p>
+        <div class="rank">
+          <span id="rank-badge" class="rank-badge"></span>
+          <div class="rank-info">
+            <div><b id="rank-name"></b> <small id="rank-next"></small></div>
+            <div class="track"><div id="rank-fill" class="fill xp"></div></div>
+          </div>
+        </div>
       </div>
       <div class="spacer"></div>
       <div class="stack">
@@ -35,11 +42,12 @@
         <button id="btn-play" class="btn big">▶ Play</button>
         <div class="row">
           <button id="btn-shop" class="btn blue">🚀 Hangar</button>
-          <button id="btn-progress" class="btn purple">📊 Progress</button>
+          <button id="btn-pals" class="btn purple">👽 Pals <span class="pill-count" id="pal-total">0</span></button>
         </div>
         <div class="row">
           <button id="btn-sound" class="icon-btn" aria-label="Sound effects">🔊</button>
           <button id="btn-music" class="icon-btn" aria-label="Music">🎵</button>
+          <button id="btn-progress" class="icon-btn" aria-label="Progress for grown-ups">📊</button>
           <span class="gem-pill">💎 <span class="gems">0</span></span>
         </div>
       </div>
@@ -67,6 +75,10 @@
       <div id="question" class="question"><span id="q-text"></span> = <span id="q-answer" class="q-answer">?</span></div>
       <div class="hud-row"><span id="score" class="score">0</span><span id="combo" class="combo"></span></div>
       <div id="banner" class="banner hidden"></div>
+      <div id="copilot" class="copilot hidden">
+        <span id="copilot-face" class="copilot-face"></span>
+        <span id="copilot-bubble" class="bubble hidden"></span>
+      </div>
       <div id="keypad" class="keypad hidden">
         <button data-key="1">1</button><button data-key="2">2</button><button data-key="3">3</button>
         <button data-key="4">4</button><button data-key="5">5</button><button data-key="6">6</button>
@@ -81,10 +93,14 @@
       <div class="panel results">
         <h2 id="res-title">Mission complete!</h2>
         <div id="res-stars" class="stars"><span>★</span><span>★</span><span>★</span></div>
+        <div id="res-big" class="res-big hidden"></div>
         <div id="res-stats" class="res-stats"></div>
         <div id="res-learned" class="res-learned"></div>
         <div id="res-world" class="res-world"></div>
         <div id="res-unlock" class="unlock hidden"></div>
+        <div id="res-pal" class="pal-reveal hidden"></div>
+        <div id="res-xp" class="res-xp"></div>
+        <div id="res-rank" class="unlock hidden"></div>
         <div class="row">
           <button id="btn-again" class="btn">↻ Again</button>
           <button id="btn-tomap" class="btn blue">🪐 Planets</button>
@@ -101,6 +117,16 @@
       <div class="spacer"></div>
       <p class="shop-tip">Earn 💎 by blasting answers. Fast answers earn extra!</p>
       <div id="skin-list" class="skin-list"></div>
+    </section>
+
+    <section id="screen-pals" class="screen menu hidden">
+      <header class="bar">
+        <button class="icon-btn" data-go="title" aria-label="Back">⬅</button>
+        <h2>Space Pals</h2>
+        <span class="gem-pill" id="pal-count">0/24</span>
+      </header>
+      <p class="shop-tip">Beat a boss to find a pal. Tap one to make it your co-pilot!</p>
+      <div id="pal-grid" class="pal-grid"></div>
     </section>
 
     <section id="screen-progress" class="screen menu hidden">
