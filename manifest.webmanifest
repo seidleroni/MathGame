@@ -1,0 +1,12 @@
+{
+  "name": "Number Rocket",
+  "short_name": "Number Rocket",
+  "description": "Blast asteroids and learn addition and subtraction facts within 20.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "orientation": "any",
+  "background_color": "#070a24",
+  "theme_color": "#070a24",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}

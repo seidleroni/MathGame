@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#070a24">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Number Rocket">
+  <meta name="description" content="Blast asteroids and learn addition and subtraction facts within 20.">
+  <title>Number Rocket</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+  <script type="importmap">
+    { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js" } }
+  </script>
+</head>
+<body>
+  <canvas id="scene"></canvas>
+
+  <div id="ui">
+    <section id="screen-title" class="screen menu">
+      <div class="title-top">
+        <h1 class="logo"><span>Number</span><span>Rocket</span></h1>
+        <p class="tagline">Blast the right answer!</p>
+      </div>
+      <div class="spacer"></div>
+      <div class="stack">
+        <input id="pilot-name" class="name-input" maxlength="12" placeholder="Pilot name" autocomplete="off" spellcheck="false">
+        <button id="btn-play" class="btn big">▶ Play</button>
+        <div class="row">
+          <button id="btn-shop" class="btn blue">🚀 Hangar</button>
+          <button id="btn-progress" class="btn purple">📊 Progress</button>
+        </div>
+        <div class="row">
+          <button id="btn-sound" class="icon-btn" aria-label="Sound effects">🔊</button>
+          <button id="btn-music" class="icon-btn" aria-label="Music">🎵</button>
+          <span class="gem-pill">💎 <span class="gems">0</span></span>
+        </div>
+      </div>
+    </section>
+
+    <section id="screen-map" class="screen menu hidden">
+      <header class="bar">
+        <button class="icon-btn" data-go="title" aria-label="Back">⬅</button>
+        <h2>Pick a planet</h2>
+        <span class="gem-pill">💎 <span class="gems">0</span></span>
+      </header>
+      <div id="world-list" class="world-list"></div>
+    </section>
+
+    <section id="screen-hud" class="screen hud hidden">
+      <div class="hud-top">
+        <button id="btn-pause" class="icon-btn" aria-label="Pause">⏸</button>
+        <div class="track"><div id="progress-fill" class="fill"></div></div>
+        <span class="gem-pill">💎 <span id="hud-gems">0</span></span>
+      </div>
+      <div id="boss-bar" class="boss-bar hidden">
+        <span>👾</span>
+        <div class="track boss-track"><div id="boss-fill" class="fill"></div></div>
+      </div>
+      <div id="question" class="question"><span id="q-text"></span> = <span id="q-answer" class="q-answer">?</span></div>
+      <div class="hud-row"><span id="score" class="score">0</span><span id="combo" class="combo"></span></div>
+      <div id="banner" class="banner hidden"></div>
+      <div id="keypad" class="keypad hidden">
+        <button data-key="1">1</button><button data-key="2">2</button><button data-key="3">3</button>
+        <button data-key="4">4</button><button data-key="5">5</button><button data-key="6">6</button>
+        <button data-key="7">7</button><button data-key="8">8</button><button data-key="9">9</button>
+        <button data-key="back" class="key-back" aria-label="Erase">⌫</button>
+        <button data-key="0">0</button>
+        <button data-key="fire" class="key-fire">FIRE</button>
+      </div>
+    </section>
+
+    <section id="screen-results" class="screen menu hidden">
+      <div class="panel results">
+        <h2 id="res-title">Mission complete!</h2>
+        <div id="res-stars" class="stars"><span>★</span><span>★</span><span>★</span></div>
+        <div id="res-stats" class="res-stats"></div>
+        <div id="res-learned" class="res-learned"></div>
+        <div id="res-world" class="res-world"></div>
+        <div id="res-unlock" class="unlock hidden"></div>
+        <div class="row">
+          <button id="btn-again" class="btn">↻ Again</button>
+          <button id="btn-tomap" class="btn blue">🪐 Planets</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="screen-shop" class="screen menu hidden">
+      <header class="bar">
+        <button class="icon-btn" data-go="title" aria-label="Back">⬅</button>
+        <h2>Hangar</h2>
+        <span class="gem-pill">💎 <span class="gems">0</span></span>
+      </header>
+      <div class="spacer"></div>
+      <p class="shop-tip">Earn 💎 by blasting answers. Fast answers earn extra!</p>
+      <div id="skin-list" class="skin-list"></div>
+    </section>
+
+    <section id="screen-progress" class="screen menu hidden">
+      <header class="bar">
+        <button class="icon-btn" data-go="title" aria-label="Back">⬅</button>
+        <h2>Progress</h2>
+        <span></span>
+      </header>
+      <div class="panel progress-panel">
+        <div id="prog-summary" class="summary"></div>
+        <h3>Adding <small>(row + column)</small></h3>
+        <div id="grid-add" class="fact-grid"></div>
+        <h3>Taking away <small>(row: number taken away, column: answer)</small></h3>
+        <div id="grid-sub" class="fact-grid"></div>
+        <div class="legend">
+          <span><i class="b-none"></i>New</span>
+          <span><i class="b0"></i>Tricky</span>
+          <span><i class="b1"></i>Learning</span>
+          <span><i class="b2"></i>Learned</span>
+          <span><i class="b3"></i>Strong</span>
+          <span><i class="b4"></i>Mastered</span>
+        </div>
+        <p id="cell-info" class="cell-info">Tap a square to see a fact.</p>
+        <p class="note">Facts come back for review on a spaced schedule: a few seconds, then hours, then days. “Mastered” means answered quickly from memory on several different days.</p>
+        <button id="btn-reset" class="btn danger small">Reset progress</button>
+      </div>
+    </section>
+
+    <div id="hint" class="overlay hidden">
+      <div class="panel hint-card">
+        <div id="hint-title" class="hint-title"></div>
+        <div id="hint-fact" class="hint-fact"></div>
+        <div id="hint-frames" class="frames"></div>
+        <p id="hint-text" class="hint-text"></p>
+        <button id="hint-go" class="btn big"></button>
+      </div>
+    </div>
+
+    <div id="pause" class="overlay hidden">
+      <div class="panel stack">
+        <h2>Paused</h2>
+        <button id="btn-resume" class="btn big">▶ Resume</button>
+        <button id="btn-quit" class="btn blue">🪐 Planets</button>
+      </div>
+    </div>
+
+    <div id="pops"></div>
+    <div id="nogl" class="overlay hidden"><div class="panel">This game needs WebGL. Try a newer browser.</div></div>
+  </div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

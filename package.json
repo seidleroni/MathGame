@@ -1,0 +1,11 @@
+{
+  "name": "number-rocket",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A Three.js space game for memorizing addition and subtraction facts within 20.",
+  "type": "module",
+  "scripts": {
+    "start": "node tools/serve.mjs",
+    "test": "node --test"
+  }
+}
